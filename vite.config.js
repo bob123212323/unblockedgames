@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig(() => {
   return {
+    base: process.env.BASE_PATH || (process.env.GITHUB_ACTIONS ? '/unblockedgames/' : './'),
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
