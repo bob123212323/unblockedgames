@@ -70,6 +70,18 @@ export const GamePlayer = ({
   // Filter recommendations
   const relatedGames = allGames.filter(g => g.id !== game.id).slice(0, 4);
 
+  const getResolvedUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) {
+      return url;
+    }
+    const clean = url.replace(/^\/+/, '');
+    const base = import.meta.env.BASE_URL || './';
+    return `${base}${clean}`;
+  };
+
+  const gameSrc = getResolvedUrl(game.iframeUrl);
+
   return (
     <div className={`space-y-6 transition-all duration-300 ${theaterMode ? 'bg-slate-950 py-4' : ''}`}>
       {/* Top Breadcrumb & Action Bar */}
@@ -121,10 +133,10 @@ export const GamePlayer = ({
           </button>
 
           {/* Open in New Tab */}
-          {game.iframeUrl && (
+          {gameSrc && (
             <a
               id="btn-player-new-tab"
-              href={game.iframeUrl}
+              href={gameSrc}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold transition-colors"
@@ -197,7 +209,7 @@ export const GamePlayer = ({
         <iframe
           ref={iframeRef}
           id="game-iframe-element"
-          src={game.iframeUrl}
+          src={gameSrc}
           srcDoc={game.srcDoc}
           title={game.title}
           allow="autoplay; fullscreen; gamepad; focus-without-user-activation; cross-origin-isolated"

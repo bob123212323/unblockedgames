@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { CLOAK_PRESETS } from './data/presets.js';
+import { DEFAULT_GAMES } from './data/defaultGames.js';
 import { Navbar } from './components/Navbar.jsx';
 import { GameCard } from './components/GameCard.jsx';
 import { GamePlayer } from './components/GamePlayer.jsx';
@@ -31,7 +32,15 @@ const DEFAULT_SETTINGS = {
 const CATEGORIES = ['All', 'Popular', 'Action', 'Arcade', 'Puzzle', 'Retro', 'Sports', 'Strategy', 'Casual', 'Favorites'];
 
 export default function App() {
-  const [games, setGames] = useState([]);
+  const [games, setGames] = useState(() => {
+    try {
+      const savedCustom = localStorage.getItem('unblocked_hub_custom_games');
+      const customList = savedCustom ? JSON.parse(savedCustom) : [];
+      return [...customList, ...DEFAULT_GAMES.filter(d => !customList.some(c => c.id === d.id))];
+    } catch {
+      return DEFAULT_GAMES;
+    }
+  });
   const [selectedGame, setSelectedGame] = useState(null);
   const [favorites, setFavorites] = useState(() => {
     try {
@@ -58,24 +67,23 @@ export default function App() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isJsonOpen, setIsJsonOpen] = useState(false);
 
-  // Load initial games from games.json or localStorage
+  // Load initial games from games.json or fallback to DEFAULT_GAMES
   useEffect(() => {
     const loadGames = async () => {
       try {
         const savedCustom = localStorage.getItem('unblocked_hub_custom_games');
         const customList = savedCustom ? JSON.parse(savedCustom) : [];
 
-        const res = await fetch('/games.json');
+        const base = import.meta.env.BASE_URL || './';
+        const res = await fetch(`${base}games.json`);
         if (res.ok) {
           const defaultList = await res.json();
           // Merge custom and defaults
           const merged = [...customList, ...defaultList.filter(d => !customList.some(c => c.id === d.id))];
           setGames(merged);
-        } else {
-          setGames(customList);
         }
       } catch (err) {
-        console.error('Error fetching games.json:', err);
+        console.warn('Using embedded DEFAULT_GAMES catalog fallback:', err);
       }
     };
     loadGames();
@@ -153,15 +161,7 @@ export default function App() {
   // Reset to default
   const handleResetToDefault = async () => {
     localStorage.removeItem('unblocked_hub_custom_games');
-    try {
-      const res = await fetch('/games.json');
-      if (res.ok) {
-        const defaultList = await res.json();
-        setGames(defaultList);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    setGames(DEFAULT_GAMES);
   };
 
   // Stealth About:Blank Launcher for a specific game
@@ -180,7 +180,15 @@ export default function App() {
     const targetTitle = settings.customTitle || preset.title;
     const targetFavicon = settings.customFavicon || preset.favicon;
 
-    const gameSrc = game.iframeUrl ? (game.iframeUrl.startsWith('/') ? window.location.origin + game.iframeUrl : game.iframeUrl) : '';
+    let gameSrc = '';
+    if (game.iframeUrl) {
+      if (game.iframeUrl.startsWith('http://') || game.iframeUrl.startsWith('https://') || game.iframeUrl.startsWith('data:')) {
+        gameSrc = game.iframeUrl;
+      } else {
+        const clean = game.iframeUrl.replace(/^\/+/, '');
+        gameSrc = new URL(clean, window.location.href).href;
+      }
+    }
 
     doc.write(`
       <!DOCTYPE html>
