@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Connect 4</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; }
+  .header { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 420px; margin-bottom: 10px; }
+  .title { font-size: 24px; font-weight: 900; color: #3b82f6; }
+  .turn-indicator { font-weight: 700; font-size: 16px; padding: 4px 12px; border-radius: 20px; }
+  .turn-red { background: #fee2e2; color: #dc2626; }
+  .turn-yellow { background: #fef9c3; color: #ca8a04; }
+  .board { background: #1d4ed8; padding: 12px; border-radius: 16px; display: grid; grid-template-columns: repeat(7, 1fr); grid-gap: 8px; width: 100%; max-width: 420px; aspect-ratio: 7/6; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .cell { background: #0f172a; border-radius: 50%; width: 100%; height: 100%; cursor: pointer; transition: 0.15s; border: 2px solid #1e40af; }
+  .cell:hover { filter: brightness(1.2); }
+  .cell.red { background: #ef4444; border-color: #b91c1c; box-shadow: inset 0 2px 6px rgba(0,0,0,0.3); }
+  .cell.yellow { background: #eab308; border-color: #a16207; box-shadow: inset 0 2px 6px rgba(0,0,0,0.3); }
+  .controls { margin-top: 15px; display: flex; gap: 10px; }
+  .btn { background: #3b82f6; color: #fff; border: none; padding: 8px 18px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+  .btn:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">🔴 Connect 4</div>
+    <div id="turn" class="turn-indicator turn-red">Red's Turn</div>
+  </div>
+  <div class="board" id="board"></div>
+  <div class="controls">
+    <button class="btn" id="restart">Restart</button>
+    <button class="btn" id="toggle-ai">Mode: vs CPU</button>
+  </div>
+
+<script>
+  const ROWS = 6;
+  const COLS = 7;
+  let grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
+  let currentPlayer = 1; // 1: Red, 2: Yellow
+  let vsAi = true;
+  let gameOver = false;
+
+  const boardEl = document.getElementById('board');
+  const turnEl = document.getElementById('turn');
+  const restartBtn = document.getElementById('restart');
+  const toggleAiBtn = document.getElementById('toggle-ai');
+
+  function init() {
+    grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
+    currentPlayer = 1;
+    gameOver = false;
+    updateTurn();
+    render();
+  }
+
+  function updateTurn() {
+    if (gameOver) return;
+    if (currentPlayer === 1) {
+      turnEl.className = 'turn-indicator turn-red';
+      turnEl.textContent = "Red's Turn";
+    } else {
+      turnEl.className = 'turn-indicator turn-yellow';
+      turnEl.textContent = vsAi ? "CPU Thinking..." : "Yellow's Turn";
+    }
+  }
+
+  function render() {
+    boardEl.innerHTML = '';
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        if (grid[r][c] === 1) cell.classList.add('red');
+        if (grid[r][c] === 2) cell.classList.add('yellow');
+        cell.onclick = () => handleColumnClick(c);
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function dropPiece(col, player) {
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (grid[r][col] === 0) {
+        grid[r][col] = player;
+        return r;
+      }
+    }
+    return -1;
+  }
+
+  function checkWin(player) {
+    // Horizontal
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS - 3; c++) {
+        if (grid[r][c] === player && grid[r][c+1] === player && grid[r][c+2] === player && grid[r][c+3] === player) return true;
+      }
+    }
+    // Vertical
+    for (let r = 0; r < ROWS - 3; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c] === player && grid[r+1][c] === player && grid[r+2][c] === player && grid[r+3][c] === player) return true;
+      }
+    }
+    // Diagonal Down-Right
+    for (let r = 0; r < ROWS - 3; r++) {
+      for (let c = 0; c < COLS - 3; c++) {
+        if (grid[r][c] === player && grid[r+1][c+1] === player && grid[r+2][c+2] === player && grid[r+3][c+3] === player) return true;
+      }
+    }
+    // Diagonal Up-Right
+    for (let r = 3; r < ROWS; r++) {
+      for (let c = 0; c < COLS - 3; c++) {
+        if (grid[r][c] === player && grid[r-1][c+1] === player && grid[r-2][c+2] === player && grid[r-3][c+3] === player) return true;
+      }
+    }
+    return false;
+  }
+
+  function handleColumnClick(col) {
+    if (gameOver) return;
+    if (vsAi && currentPlayer === 2) return;
+
+    const row = dropPiece(col, currentPlayer);
+    if (row === -1) return; // Full column
+
+    render();
+
+    if (checkWin(currentPlayer)) {
+      gameOver = true;
+      turnEl.textContent = (currentPlayer === 1 ? 'Red' : 'Yellow') + ' Wins! 🎉';
+      return;
+    }
+
+    currentPlayer = currentPlayer === 1 ? 2 : 1;
+    updateTurn();
+
+    if (vsAi && currentPlayer === 2 && !gameOver) {
+      setTimeout(makeAiMove, 400);
+    }
+  }
+
+  function makeAiMove() {
+    // 1. Check if AI can win
+    for (let c = 0; c < COLS; c++) {
+      const r = dropPiece(c, 2);
+      if (r !== -1) {
+        if (checkWin(2)) {
+          render();
+          gameOver = true;
+          turnEl.textContent = 'CPU Wins!';
+          return;
+        }
+        grid[r][c] = 0; // undo
+      }
+    }
+
+    // 2. Check if player can win and block
+    for (let c = 0; c < COLS; c++) {
+      const r = dropPiece(c, 1);
+      if (r !== -1) {
+        if (checkWin(1)) {
+          grid[r][c] = 2; // block!
+          render();
+          currentPlayer = 1;
+          updateTurn();
+          return;
+        }
+        grid[r][c] = 0; // undo
+      }
+    }
+
+    // 3. Prefer center columns
+    const preferredCols = [3, 2, 4, 1, 5, 0, 6];
+    for (let c of preferredCols) {
+      const r = dropPiece(c, 2);
+      if (r !== -1) {
+        render();
+        if (checkWin(2)) {
+          gameOver = true;
+          turnEl.textContent = 'CPU Wins!';
+        } else {
+          currentPlayer = 1;
+          updateTurn();
+        }
+        return;
+      }
+    }
+  }
+
+  restartBtn.onclick = init;
+  toggleAiBtn.onclick = () => {
+    vsAi = !vsAi;
+    toggleAiBtn.textContent = vsAi ? 'Mode: vs CPU' : 'Mode: 2 Players';
+    init();
+  };
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Slope 3D Neon Runner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: #030712; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+  .canvas-wrap { position: relative; width: 100%; max-width: 500px; aspect-ratio: 4/5; }
+  canvas { width: 100%; height: 100%; background: #020617; border-radius: 12px; border: 2px solid #06b6d4; display: block; box-shadow: 0 0 30px rgba(6, 182, 212, 0.3); }
+  .overlay { position: absolute; inset: 0; background: rgba(2, 6, 23, 0.85); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; backdrop-filter: blur(4px); }
+  .overlay.hidden { display: none; }
+  .btn { background: #06b6d4; color: #020617; border: none; padding: 12px 28px; border-radius: 8px; font-size: 18px; font-weight: 900; cursor: pointer; transition: 0.15s; }
+  .btn:hover { background: #22d3ee; transform: scale(1.05); }
+  .hud { position: absolute; top: 15px; left: 20px; right: 20px; display: flex; justify-content: space-between; font-size: 18px; font-weight: 800; pointer-events: none; }
+  .hud span { color: #06b6d4; }
+</style>
+</head>
+<body>
+  <div class="canvas-wrap">
+    <canvas id="slope" width="400" height="500"></canvas>
+    <div class="hud">
+      <div>SCORE: <span id="score">0</span></div>
+      <div>BEST: <span id="best">0</span></div>
+    </div>
+    <div class="overlay" id="overlay">
+      <h1 id="title" style="font-size: 32px; font-weight: 900; color: #06b6d4; text-shadow: 0 0 10px #06b6d4;">SLOPE 3D</h1>
+      <button class="btn" id="start-btn">START ROLL</button>
+      <p style="color: #94a3b8; font-size: 13px;">Use <b>← / →</b> or <b>A / D</b> or Mouse / Touch to steer</p>
+    </div>
+  </div>
+
+<script>
+  const canvas = document.getElementById('slope');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const titleEl = document.getElementById('title');
+  const startBtn = document.getElementById('start-btn');
+
+  let isPlaying = false;
+  let score = 0;
+  let best = parseInt(localStorage.getItem('slope_best') || '0', 10);
+  bestEl.textContent = best;
+
+  let speed = 7;
+  let ballX = 0; // -1 to 1 normalized
+  let ballVx = 0;
+  let keyLeft = false, keyRight = false;
+  let obstacles = [];
+  let segments = [];
+  let trackOffset = 0;
+
+  function initTrack() {
+    obstacles = [];
+    for (let i = 1; i <= 20; i++) {
+      spawnObstacle(i * 120);
+    }
+  }
+
+  function spawnObstacle(z) {
+    const type = Math.random() < 0.6 ? 'block' : 'wall';
+    const x = (Math.random() * 1.4 - 0.7); // between -0.7 and 0.7
+    obstacles.push({ x, z, type, w: 0.35, color: '#ef4444' });
+  }
+
+  function start() {
+    score = 0;
+    speed = 7;
+    ballX = 0;
+    ballVx = 0;
+    initTrack();
+    isPlaying = true;
+    overlay.classList.add('hidden');
+  }
+
+  function gameOver() {
+    isPlaying = false;
+    titleEl.textContent = 'CRASHED!';
+    startBtn.textContent = 'ROLL AGAIN';
+    overlay.classList.remove('hidden');
+  }
+
+  function project(x, z) {
+    const fov = 220;
+    const scale = fov / (z + 100);
+    const projX = canvas.width / 2 + x * canvas.width * 0.8 * scale;
+    const projY = canvas.height * 0.3 + (1.2 * scale * canvas.height * 0.6);
+    return { x: projX, y: projY, scale };
+  }
+
+  function update() {
+    if (isPlaying) {
+      score += 0.2;
+      speed = 7 + Math.min(10, score / 60);
+      scoreEl.textContent = Math.floor(score);
+      if (score > best) {
+        best = Math.floor(score);
+        localStorage.setItem('slope_best', best);
+        bestEl.textContent = best;
+      }
+
+      if (keyLeft) ballVx -= 0.008;
+      if (keyRight) ballVx += 0.008;
+      ballVx *= 0.9;
+      ballX += ballVx;
+
+      // Fall off edges
+      if (Math.abs(ballX) > 1.05) {
+        gameOver();
+      }
+
+      // Move obstacles
+      for (let i = 0; i < obstacles.length; i++) {
+        let obs = obstacles[i];
+        obs.z -= speed;
+
+        // Collision check when near camera
+        if (obs.z < 25 && obs.z > -10) {
+          if (Math.abs(ballX - obs.x) < obs.w) {
+            gameOver();
+          }
+        }
+
+        if (obs.z < -50) {
+          obstacles.splice(i, 1);
+          i--;
+          const maxZ = obstacles.reduce((max, o) => Math.max(max, o.z), 500);
+          spawnObstacle(maxZ + 120 + Math.random() * 80);
+        }
+      }
+    }
+
+    draw();
+    requestAnimationFrame(update);
+  }
+
+  function draw() {
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Perspective Track Grid
+    const trackWidth = 1.0;
+    const vanishingY = canvas.height * 0.35;
+    
+    // Draw Slope Floor
+    const pFarL = project(-trackWidth, 600);
+    const pFarR = project(trackWidth, 600);
+    const pNearL = project(-trackWidth, 0);
+    const pNearR = project(trackWidth, 0);
+
+    ctx.fillStyle = '#09152e';
+    ctx.beginPath();
+    ctx.moveTo(pNearL.x, pNearL.y);
+    ctx.lineTo(pFarL.x, pFarL.y);
+    ctx.lineTo(pFarR.x, pFarR.y);
+    ctx.lineTo(pNearR.x, pNearR.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Track Borders (Glowing Neon)
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(pNearL.x, pNearL.y);
+    ctx.lineTo(pFarL.x, pFarL.y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(pNearR.x, pNearR.y);
+    ctx.lineTo(pFarR.x, pFarR.y);
+    ctx.stroke();
+
+    // Grid Horizontal Lines
+    ctx.strokeStyle = 'rgba(6, 182, 212, 0.25)';
+    ctx.lineWidth = 1;
+    const timeZ = (Date.now() * 0.05 * speed) % 60;
+    for (let z = 600; z > 0; z -= 60) {
+      const p1 = project(-trackWidth, z - timeZ);
+      const p2 = project(trackWidth, z - timeZ);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    // Draw Obstacles from furthest to closest
+    obstacles.sort((a, b) => b.z - a.z);
+    for (let obs of obstacles) {
+      if (obs.z > 0 && obs.z < 600) {
+        const p = project(obs.x, obs.z);
+        const w = obs.w * canvas.width * 0.8 * p.scale;
+        const h = 40 * p.scale;
+
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 10 * p.scale;
+        ctx.fillRect(p.x - w / 2, p.y - h, w, h);
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    // Draw Player Ball
+    const playerP = project(ballX, 15);
+    const ballRadius = 14;
+    ctx.fillStyle = '#22c55e';
+    ctx.shadowColor = '#22c55e';
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(playerP.x, playerP.y - ballRadius, ballRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Ball reflection
+    ctx.fillStyle = '#86efac';
+    ctx.beginPath();
+    ctx.arc(playerP.x - 4, playerP.y - ballRadius - 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keyLeft = true;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keyRight = true;
+  });
+
+  window.addEventListener('keyup', e => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keyLeft = false;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keyRight = false;
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    if (!isPlaying) return;
+    const rect = canvas.getBoundingClientRect();
+    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    ballX = nx * 0.9;
+  });
+
+  canvas.addEventListener('touchmove', e => {
+    if (!isPlaying) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const nx = ((e.touches[0].clientX - rect.left) / rect.width) * 2 - 1;
+    ballX = nx * 0.9;
+  }, { passive: false });
+
+  startBtn.onclick = start;
+  initTrack();
+  update();
+</script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Speed Typing Racer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: #090d16; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 15px; }
+  .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 25px; width: 100%; max-width: 580px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .title { font-size: 24px; font-weight: 900; color: #38bdf8; }
+  .stats { display: flex; gap: 15px; }
+  .stat { background: #1f2937; padding: 6px 14px; border-radius: 8px; font-weight: bold; font-size: 14px; text-align: center; }
+  .stat span { color: #38bdf8; font-size: 18px; }
+  .text-box { background: #030712; border: 1px solid #374151; border-radius: 8px; padding: 18px; font-size: 20px; line-height: 1.6; font-family: monospace; min-height: 110px; margin-bottom: 15px; letter-spacing: 0.5px; }
+  .char-correct { color: #4ade80; }
+  .char-incorrect { color: #f87171; background: rgba(239, 68, 68, 0.2); }
+  .char-current { background: #38bdf8; color: #000; }
+  .input-area { width: 100%; }
+  input { width: 100%; background: #1f2937; border: 2px solid #3b82f6; border-radius: 8px; padding: 14px 18px; color: #fff; font-size: 18px; font-family: monospace; outline: none; }
+  .btn { background: #3b82f6; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 15px; transition: 0.15s; }
+  .btn:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="title">🏎️ Speed Typer</div>
+      <div class="stats">
+        <div class="stat">WPM<br><span id="wpm">0</span></div>
+        <div class="stat">Acc<br><span id="acc">100%</span></div>
+        <div class="stat">Time<br><span id="time">30s</span></div>
+      </div>
+    </div>
+    <div class="text-box" id="text-display"></div>
+    <div class="input-area">
+      <input type="text" id="input-box" placeholder="Start typing here..." autofocus autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <button class="btn" id="restart">Restart Test</button>
+      <span style="font-size: 12px; color: #9ca3af;">Type fast to beat your high score</span>
+    </div>
+  </div>
+
+<script>
+  const PASSAGES = [
+    "The quick brown fox jumps over the lazy dog while the sun rises over the horizon.",
+    "Technology and coding empower millions of creators around the world to build the future.",
+    "Bypassing network filters with local iframes allows students to enjoy educational puzzle games.",
+    "Always remember to stay focused, practice every day, and write clean efficient software.",
+    "Space exploration has opened our minds to the vast mysteries of planets, stars, and galaxies."
+  ];
+
+  let passage = "";
+  let timeLeft = 30;
+  let timer = null;
+  let started = false;
+  let mistakes = 0;
+  let totalTyped = 0;
+
+  const displayEl = document.getElementById('text-display');
+  const inputEl = document.getElementById('input-box');
+  const wpmEl = document.getElementById('wpm');
+  const accEl = document.getElementById('acc');
+  const timeEl = document.getElementById('time');
+  const restartBtn = document.getElementById('restart');
+
+  function init() {
+    passage = PASSAGES[Math.floor(Math.random() * PASSAGES.length)];
+    inputEl.value = "";
+    inputEl.disabled = false;
+    timeLeft = 30;
+    started = false;
+    mistakes = 0;
+    totalTyped = 0;
+    clearInterval(timer);
+    wpmEl.textContent = '0';
+    accEl.textContent = '100%';
+    timeEl.textContent = '30s';
+    renderPassage();
+    inputEl.focus();
+  }
+
+  function renderPassage() {
+    const val = inputEl.value;
+    let html = "";
+    for (let i = 0; i < passage.length; i++) {
+      if (i < val.length) {
+        if (val[i] === passage[i]) {
+          html += `<span class="char-correct">${passage[i]}</span>`;
+        } else {
+          html += `<span class="char-incorrect">${passage[i]}</span>`;
+        }
+      } else if (i === val.length) {
+        html += `<span class="char-current">${passage[i]}</span>`;
+      } else {
+        html += `<span>${passage[i]}</span>`;
+      }
+    }
+    displayEl.innerHTML = html;
+  }
+
+  function startTimer() {
+    timer = setInterval(() => {
+      timeLeft--;
+      timeEl.textContent = `${timeLeft}s`;
+      calcStats();
+      if (timeLeft <= 0) {
+        clearInterval(timer);
+        inputEl.disabled = true;
+      }
+    }, 1000);
+  }
+
+  function calcStats() {
+    const elapsedMin = (30 - timeLeft) / 60;
+    if (elapsedMin > 0) {
+      const words = totalTyped / 5;
+      const wpm = Math.max(0, Math.round(words / elapsedMin));
+      wpmEl.textContent = wpm;
+      const acc = totalTyped > 0 ? Math.round(((totalTyped - mistakes) / totalTyped) * 100) : 100;
+      accEl.textContent = `${acc}%`;
+    }
+  }
+
+  inputEl.addEventListener('input', (e) => {
+    if (!started) {
+      started = true;
+      startTimer();
+    }
+
+    const val = inputEl.value;
+    totalTyped = val.length;
+
+    // Check errors
+    mistakes = 0;
+    for (let i = 0; i < val.length; i++) {
+      if (val[i] !== passage[i]) mistakes++;
+    }
+
+    renderPassage();
+    calcStats();
+
+    if (val === passage) {
+      clearInterval(timer);
+      inputEl.disabled = true;
+    }
+  });
+
+  restartBtn.onclick = init;
+  init();
+</script>
+</body>
+</html>

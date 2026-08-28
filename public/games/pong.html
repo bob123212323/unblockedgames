@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pong Classic</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: monospace; }
+  body { background: #000; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; }
+  .header { width: 100%; max-width: 500px; display: flex; justify-content: space-around; font-size: 32px; font-weight: bold; margin-bottom: 8px; }
+  .canvas-wrap { position: relative; width: 100%; max-width: 500px; aspect-ratio: 5/3; }
+  canvas { width: 100%; height: 100%; background: #000; border: 3px solid #fff; display: block; }
+  .overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; }
+  .overlay.hidden { display: none; }
+  .btn { background: #fff; color: #000; border: 2px solid #fff; padding: 10px 24px; font-size: 16px; font-family: monospace; font-weight: bold; cursor: pointer; }
+  .btn:hover { background: #000; color: #fff; }
+  .mode-select { display: flex; gap: 10px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>P1: <span id="p1-score">0</span></div>
+    <div>CPU: <span id="p2-score">0</span></div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="pong" width="500" height="300"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 style="font-size: 28px;">PONG</h2>
+      <div class="mode-select">
+        <button class="btn" id="btn-easy">EASY CPU</button>
+        <button class="btn" id="btn-hard">HARD CPU</button>
+        <button class="btn" id="btn-2p">2 PLAYERS</button>
+      </div>
+      <p style="font-size: 12px; color: #888;">P1: W/S or Mouse | P2: ↑/↓</p>
+    </div>
+  </div>
+
+<script>
+  const canvas = document.getElementById('pong');
+  const ctx = canvas.getContext('2d');
+  const p1ScoreEl = document.getElementById('p1-score');
+  const p2ScoreEl = document.getElementById('p2-score');
+  const overlay = document.getElementById('overlay');
+
+  let mode = 'easy'; // easy, hard, 2p
+  let p1Score = 0, p2Score = 0;
+  let isPlaying = false;
+
+  const paddleH = 60, paddleW = 10;
+  let p1Y = 120, p2Y = 120;
+  let p1Dy = 0, p2Dy = 0;
+  const paddleSpeed = 6;
+
+  let ball = { x: 250, y: 150, dx: 4, dy: 3, size: 8 };
+
+  function resetBall(winner) {
+    ball.x = 250;
+    ball.y = 150;
+    ball.dx = (winner === 1 ? -4 : 4);
+    ball.dy = (Math.random() * 4 - 2);
+  }
+
+  function start(selectedMode) {
+    mode = selectedMode;
+    p1Score = 0;
+    p2Score = 0;
+    p1ScoreEl.textContent = '0';
+    p2ScoreEl.textContent = '0';
+    p1Y = 120;
+    p2Y = 120;
+    resetBall(1);
+    isPlaying = true;
+    overlay.classList.add('hidden');
+  }
+
+  function update() {
+    if (isPlaying) {
+      // Move P1
+      p1Y += p1Dy;
+      p1Y = Math.max(0, Math.min(canvas.height - paddleH, p1Y));
+
+      // Move P2 (AI or 2P)
+      if (mode === '2p') {
+        p2Y += p2Dy;
+      } else {
+        const centerP2 = p2Y + paddleH / 2;
+        const targetY = ball.y;
+        const aiSpeed = mode === 'hard' ? 4.8 : 3.2;
+        if (centerP2 < targetY - 10) p2Y += aiSpeed;
+        else if (centerP2 > targetY + 10) p2Y -= aiSpeed;
+      }
+      p2Y = Math.max(0, Math.min(canvas.height - paddleH, p2Y));
+
+      // Move Ball
+      ball.x += ball.dx;
+      ball.y += ball.dy;
+
+      // Top/Bottom bounce
+      if (ball.y <= 0 || ball.y >= canvas.height - ball.size) {
+        ball.dy = -ball.dy;
+      }
+
+      // P1 Paddle Hit
+      if (ball.x <= 20 && ball.y + ball.size >= p1Y && ball.y <= p1Y + paddleH) {
+        ball.dx = Math.abs(ball.dx) * 1.05;
+        const delta = (ball.y + ball.size/2) - (p1Y + paddleH/2);
+        ball.dy = delta * 0.15;
+      }
+
+      // P2 Paddle Hit
+      if (ball.x + ball.size >= canvas.width - 20 && ball.y + ball.size >= p2Y && ball.y <= p2Y + paddleH) {
+        ball.dx = -Math.abs(ball.dx) * 1.05;
+        const delta = (ball.y + ball.size/2) - (p2Y + paddleH/2);
+        ball.dy = delta * 0.15;
+      }
+
+      // Scoring
+      if (ball.x < 0) {
+        p2Score++;
+        p2ScoreEl.textContent = p2Score;
+        checkWin();
+        resetBall(2);
+      } else if (ball.x > canvas.width) {
+        p1Score++;
+        p1ScoreEl.textContent = p1Score;
+        checkWin();
+        resetBall(1);
+      }
+    }
+
+    draw();
+    requestAnimationFrame(update);
+  }
+
+  function checkWin() {
+    if (p1Score >= 7 || p2Score >= 7) {
+      isPlaying = false;
+      overlay.classList.remove('hidden');
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Center dotted line
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2, 0);
+    ctx.lineTo(canvas.width / 2, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Paddles
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(10, p1Y, paddleW, paddleH);
+    ctx.fillRect(canvas.width - 20, p2Y, paddleW, paddleH);
+
+    // Ball
+    ctx.fillRect(ball.x, ball.y, ball.size, ball.size);
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'KeyW') p1Dy = -paddleSpeed;
+    if (e.code === 'KeyS') p1Dy = paddleSpeed;
+    if (e.code === 'ArrowUp') { e.preventDefault(); if (mode === '2p') p2Dy = -paddleSpeed; else p1Dy = -paddleSpeed; }
+    if (e.code === 'ArrowDown') { e.preventDefault(); if (mode === '2p') p2Dy = paddleSpeed; else p1Dy = paddleSpeed; }
+  });
+
+  window.addEventListener('keyup', e => {
+    if (['KeyW', 'KeyS'].includes(e.code)) p1Dy = 0;
+    if (['ArrowUp', 'ArrowDown'].includes(e.code)) {
+      if (mode === '2p') p2Dy = 0;
+      else p1Dy = 0;
+    }
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    p1Y = mouseY - paddleH / 2;
+  });
+
+  document.getElementById('btn-easy').onclick = () => start('easy');
+  document.getElementById('btn-hard').onclick = () => start('hard');
+  document.getElementById('btn-2p').onclick = () => start('2p');
+
+  update();
+</script>
+</body>
+</html>

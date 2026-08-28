@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Chrome Dino Runner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: #181a1b; color: #e8e6e3; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 15px; }
+  .wrap { position: relative; width: 100%; max-width: 600px; aspect-ratio: 3/1; }
+  canvas { width: 100%; height: 100%; background: #202324; border-radius: 10px; border: 2px solid #3b4045; display: block; box-shadow: 0 8px 25px rgba(0,0,0,0.5); }
+  .header { width: 100%; max-width: 600px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .title { font-size: 20px; font-weight: 800; color: #a0aec0; }
+  .stats { font-family: monospace; font-size: 18px; font-weight: 700; color: #68d391; }
+  .hint { margin-top: 10px; font-size: 13px; color: #718096; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">🦖 T-Rex Dino Run</div>
+    <div class="stats">HI <span id="high">00000</span> <span id="score" style="color: #fff;">00000</span></div>
+  </div>
+  <div class="wrap">
+    <canvas id="dino" width="600" height="200"></canvas>
+  </div>
+  <div class="hint">Press <b>Space</b> or <b>Tap</b> to Jump | Press <b>↓ (Down)</b> to Duck</div>
+
+<script>
+  const canvas = document.getElementById('dino');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const highEl = document.getElementById('high');
+
+  let isPlaying = false;
+  let isGameOver = false;
+  let score = 0;
+  let high = parseInt(localStorage.getItem('dino_high') || '0', 10);
+  highEl.textContent = String(high).padStart(5, '0');
+
+  let speed = 6;
+  let groundY = 160;
+
+  const player = {
+    x: 40,
+    y: groundY - 40,
+    w: 36,
+    h: 40,
+    vy: 0,
+    gravity: 0.85,
+    jumpStrength: -13,
+    isGrounded: true,
+    isDucking: false,
+    jump() {
+      if (this.isGrounded && !this.isDucking) {
+        this.vy = this.jumpStrength;
+        this.isGrounded = false;
+      }
+    },
+    duck(d) {
+      if (this.isGrounded) {
+        this.isDucking = d;
+        this.h = d ? 24 : 40;
+        this.y = d ? groundY - 24 : groundY - 40;
+      }
+    },
+    update() {
+      if (!this.isGrounded) {
+        this.vy += this.gravity;
+        this.y += this.vy;
+        if (this.y >= groundY - this.h) {
+          this.y = groundY - this.h;
+          this.vy = 0;
+          this.isGrounded = true;
+        }
+      }
+    },
+    draw() {
+      ctx.fillStyle = '#e2e8f0';
+      if (this.isDucking) {
+        ctx.fillRect(this.x, this.y, 48, 24);
+        ctx.fillStyle = '#202324';
+        ctx.fillRect(this.x + 36, this.y + 4, 4, 4); // eye
+      } else {
+        // Body
+        ctx.fillRect(this.x + 10, this.y + 10, 20, 25);
+        // Head
+        ctx.fillRect(this.x + 18, this.y, 18, 16);
+        // Eye
+        ctx.fillStyle = '#202324';
+        ctx.fillRect(this.x + 28, this.y + 3, 3, 3);
+        ctx.fillStyle = '#e2e8f0';
+        // Legs
+        const legOffset = (Math.floor(Date.now() / 80) % 2 === 0) ? 4 : -4;
+        ctx.fillRect(this.x + 12, this.y + 35, 4, 6);
+        ctx.fillRect(this.x + 22, this.y + 35, 4, 6);
+        // Arms
+        ctx.fillRect(this.x + 32, this.y + 18, 6, 4);
+      }
+    }
+  };
+
+  let obstacles = [];
+  let clouds = [
+    { x: 100, y: 40, speed: 1 },
+    { x: 340, y: 25, speed: 0.8 },
+    { x: 500, y: 55, speed: 1.2 }
+  ];
+
+  function spawnObstacle() {
+    const isPterodactyl = score > 200 && Math.random() < 0.3;
+    if (isPterodactyl) {
+      const birdY = Math.random() < 0.5 ? groundY - 30 : groundY - 55;
+      obstacles.push({ x: canvas.width + 20, y: birdY, w: 32, h: 22, type: 'bird' });
+    } else {
+      const count = Math.random() < 0.3 ? 2 : 1;
+      const h = Math.random() < 0.5 ? 35 : 45;
+      obstacles.push({ x: canvas.width + 20, y: groundY - h, w: count * 16, h: h, type: 'cactus' });
+    }
+  }
+
+  let nextSpawn = 80;
+
+  function reset() {
+    obstacles = [];
+    score = 0;
+    speed = 6;
+    isGameOver = false;
+    isPlaying = true;
+    player.y = groundY - 40;
+    player.isGrounded = true;
+    player.vy = 0;
+    nextSpawn = 60;
+  }
+
+  function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Ground line
+    ctx.strokeStyle = '#4a5568';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, groundY);
+    ctx.lineTo(canvas.width, groundY);
+    ctx.stroke();
+
+    // Clouds
+    ctx.fillStyle = '#4a5568';
+    clouds.forEach(c => {
+      if (isPlaying) c.x -= c.speed;
+      if (c.x < -60) c.x = canvas.width + 20;
+      ctx.fillRect(c.x, c.y, 40, 10);
+      ctx.fillRect(c.x + 10, c.y - 6, 20, 6);
+    });
+
+    if (isPlaying) {
+      score += 0.2;
+      speed = 6 + Math.min(8, Math.floor(score / 100) * 0.5);
+      scoreEl.textContent = String(Math.floor(score)).padStart(5, '0');
+      if (score > high) {
+        high = Math.floor(score);
+        localStorage.setItem('dino_high', high);
+        highEl.textContent = String(high).padStart(5, '0');
+      }
+
+      player.update();
+
+      // Obstacle management
+      nextSpawn--;
+      if (nextSpawn <= 0) {
+        spawnObstacle();
+        nextSpawn = Math.floor(Math.random() * 40) + Math.max(45, 90 - Math.floor(score / 50));
+      }
+
+      for (let i = 0; i < obstacles.length; i++) {
+        const obs = obstacles[i];
+        obs.x -= speed;
+
+        // Collision box
+        const pbox = {
+          x: player.x + 4,
+          y: player.y + 4,
+          w: (player.isDucking ? 44 : 28),
+          h: player.h - 8
+        };
+
+        if (
+          pbox.x < obs.x + obs.w &&
+          pbox.x + pbox.w > obs.x &&
+          pbox.y < obs.y + obs.h &&
+          pbox.y + pbox.h > obs.y
+        ) {
+          isGameOver = true;
+          isPlaying = false;
+        }
+
+        if (obs.x + obs.w < 0) {
+          obstacles.splice(i, 1);
+          i--;
+        }
+      }
+    }
+
+    // Draw Obstacles
+    obstacles.forEach(obs => {
+      ctx.fillStyle = obs.type === 'bird' ? '#fc8181' : '#68d391';
+      if (obs.type === 'bird') {
+        ctx.fillRect(obs.x, obs.y + 6, obs.w, 10);
+        ctx.fillRect(obs.x + 8, obs.y, 14, 6);
+        ctx.fillRect(obs.x + 22, obs.y + 12, 10, 4);
+      } else {
+        ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+        ctx.fillStyle = '#48bb78';
+        ctx.fillRect(obs.x + 4, obs.y + 4, obs.w - 8, obs.h - 8);
+      }
+    });
+
+    player.draw();
+
+    if (!isPlaying) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      if (isGameOver) {
+        ctx.fillText('GAME OVER', canvas.width / 2, 90);
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#a0aec0';
+        ctx.fillText('Press SPACE or TAP to restart', canvas.width / 2, 125);
+      } else {
+        ctx.fillText('PRESS SPACE TO RUN', canvas.width / 2, 95);
+        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#a0aec0';
+        ctx.fillText('Avoid cacti and birds!', canvas.width / 2, 125);
+      }
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function handleAction() {
+    if (!isPlaying) reset();
+    else player.jump();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+      e.preventDefault();
+      handleAction();
+    } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+      e.preventDefault();
+      player.duck(true);
+    }
+  });
+
+  window.addEventListener('keyup', e => {
+    if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+      player.duck(false);
+    }
+  });
+
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(); }, { passive: false });
+  canvas.addEventListener('mousedown', handleAction);
+
+  loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stack Tower</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: #0f172a; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+  .canvas-wrap { position: relative; width: 100%; max-width: 360px; aspect-ratio: 9/16; }
+  canvas { width: 100%; height: 100%; background: #1e1b4b; border-radius: 12px; border: 2px solid #6366f1; display: block; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  .hud { position: absolute; top: 20px; left: 0; right: 0; text-align: center; pointer-events: none; }
+  .score { font-size: 42px; font-weight: 900; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+  .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.85); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; backdrop-filter: blur(3px); }
+  .overlay.hidden { display: none; }
+  .btn { background: #6366f1; color: #fff; border: none; padding: 12px 30px; border-radius: 8px; font-size: 18px; font-weight: 800; cursor: pointer; transition: 0.15s; }
+  .btn:hover { background: #4f46e5; }
+</style>
+</head>
+<body>
+  <div class="canvas-wrap">
+    <canvas id="stack" width="360" height="600"></canvas>
+    <div class="hud">
+      <div class="score" id="score">0</div>
+      <div style="font-size: 14px; color: #a5b4fc;">BEST: <span id="best">0</span></div>
+    </div>
+    <div class="overlay" id="overlay">
+      <h1 id="title" style="font-size: 32px; font-weight: 900; color: #a5b4fc;">STACK TOWER</h1>
+      <button class="btn" id="start-btn">TAP TO STACK</button>
+      <p style="color: #cbd5e1; font-size: 13px;">Click, Tap, or Space to drop block</p>
+    </div>
+  </div>
+
+<script>
+  const canvas = document.getElementById('stack');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl = document.getElementById('best');
+  const overlay = document.getElementById('overlay');
+  const titleEl = document.getElementById('title');
+  const startBtn = document.getElementById('start-btn');
+
+  let isPlaying = false;
+  let score = 0;
+  let best = parseInt(localStorage.getItem('stack_best') || '0', 10);
+  bestEl.textContent = best;
+
+  const BLOCK_HEIGHT = 28;
+  let stack = [];
+  let current = null;
+  let speed = 3.5;
+  let dir = 1;
+  let hue = 200;
+
+  function init() {
+    stack = [
+      { x: 80, y: 520, w: 200, color: `hsl(220, 80%, 55%)` }
+    ];
+    score = 0;
+    scoreEl.textContent = '0';
+    hue = 220;
+    speed = 3.5;
+    spawnBlock();
+    isPlaying = true;
+    overlay.classList.add('hidden');
+  }
+
+  function spawnBlock() {
+    const prev = stack[stack.length - 1];
+    hue = (hue + 12) % 360;
+    current = {
+      x: 0,
+      y: prev.y - BLOCK_HEIGHT,
+      w: prev.w,
+      color: `hsl(${hue}, 80%, 60%)`
+    };
+    dir = 1;
+  }
+
+  function drop() {
+    if (!isPlaying) return;
+    const prev = stack[stack.length - 1];
+    const diff = current.x - prev.x;
+
+    if (Math.abs(diff) < 4) {
+      // Perfect placement bonus
+      current.x = prev.x;
+    } else {
+      if (diff > 0) {
+        current.w -= diff;
+      } else {
+        current.w += diff;
+        current.x = prev.x;
+      }
+    }
+
+    if (current.w <= 0) {
+      // Game Over
+      isPlaying = false;
+      titleEl.textContent = 'GAME OVER';
+      startBtn.textContent = 'PLAY AGAIN';
+      overlay.classList.remove('hidden');
+      return;
+    }
+
+    stack.push({ ...current });
+    score++;
+    scoreEl.textContent = score;
+    if (score > best) {
+      best = score;
+      localStorage.setItem('stack_best', best);
+      bestEl.textContent = best;
+    }
+
+    speed = Math.min(8, 3.5 + score * 0.15);
+
+    // Scroll stack camera downwards if climbing high
+    if (current.y < 250) {
+      for (let b of stack) {
+        b.y += BLOCK_HEIGHT;
+      }
+    }
+
+    spawnBlock();
+  }
+
+  function update() {
+    if (isPlaying && current) {
+      current.x += dir * speed;
+      if (current.x + current.w >= canvas.width || current.x <= 0) {
+        dir = -dir;
+      }
+    }
+
+    draw();
+    requestAnimationFrame(update);
+  }
+
+  function draw() {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw stack
+    for (let b of stack) {
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x, b.y, b.w, BLOCK_HEIGHT);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(b.x, b.y, b.w, 3);
+    }
+
+    // Draw active moving block
+    if (current && isPlaying) {
+      ctx.fillStyle = current.color;
+      ctx.fillRect(current.x, current.y, current.w, BLOCK_HEIGHT);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(current.x, current.y, current.w, 3);
+    }
+  }
+
+  function trigger() {
+    if (isPlaying) drop();
+    else init();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'ArrowUp') {
+      e.preventDefault();
+      trigger();
+    }
+  });
+
+  canvas.addEventListener('mousedown', trigger);
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); trigger(); }, { passive: false });
+  startBtn.onclick = init;
+
+  init();
+  isPlaying = false;
+  overlay.classList.remove('hidden');
+  update();
+</script>
+</body>
+</html>

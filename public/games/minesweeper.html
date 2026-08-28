@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Minesweeper</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: monospace; }
+  body { background: #1e293b; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 10px; }
+  .board-container { background: #334155; padding: 15px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); border: 2px solid #475569; }
+  .header { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #1e293b; }
+  .counter { font-size: 24px; font-weight: bold; color: #ef4444; background: #000; padding: 2px 8px; border-radius: 4px; }
+  .face-btn { font-size: 24px; cursor: pointer; background: #475569; border: 1px solid #64748b; border-radius: 4px; padding: 2px 8px; }
+  .face-btn:active { transform: scale(0.95); }
+  .grid { display: grid; grid-template-columns: repeat(10, 30px); grid-gap: 2px; background: #1e293b; padding: 4px; border-radius: 6px; }
+  .cell { width: 30px; height: 30px; background: #475569; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: bold; cursor: pointer; }
+  .cell:hover { background: #64748b; }
+  .cell.revealed { background: #0f172a; cursor: default; }
+  .cell.mine { background: #ef4444; }
+  .c1 { color: #38bdf8; }
+  .c2 { color: #4ade80; }
+  .c3 { color: #f87171; }
+  .c4 { color: #818cf8; }
+  .c5 { color: #fb923c; }
+  .c6 { color: #2dd4bf; }
+  .instructions { margin-top: 12px; font-size: 12px; color: #94a3b8; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="board-container">
+    <div class="header">
+      <div class="counter" id="mine-count">015</div>
+      <button class="face-btn" id="face">🙂</button>
+      <div class="counter" id="timer">000</div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+  <div class="instructions">Left Click to Dig | Right Click or Long Press to Flag 🚩</div>
+
+<script>
+  const ROWS = 10;
+  const COLS = 10;
+  const MINES = 15;
+
+  let grid = [];
+  let revealedCount = 0;
+  let flags = 0;
+  let timer = 0;
+  let timerInterval = null;
+  let gameOver = false;
+  let firstClick = true;
+
+  const gridEl = document.getElementById('grid');
+  const mineCountEl = document.getElementById('mine-count');
+  const timerEl = document.getElementById('timer');
+  const faceEl = document.getElementById('face');
+
+  function init() {
+    grid = [];
+    revealedCount = 0;
+    flags = 0;
+    timer = 0;
+    gameOver = false;
+    firstClick = true;
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerEl.textContent = '000';
+    mineCountEl.textContent = String(MINES).padStart(3, '0');
+    faceEl.textContent = '🙂';
+
+    gridEl.innerHTML = '';
+    for (let r = 0; r < ROWS; r++) {
+      grid[r] = [];
+      for (let c = 0; c < COLS; c++) {
+        const cell = {
+          r, c,
+          isMine: false,
+          revealed: false,
+          flagged: false,
+          count: 0,
+          el: document.createElement('div')
+        };
+        cell.el.className = 'cell';
+        cell.el.addEventListener('click', () => handleClick(cell));
+        cell.el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          handleRightClick(cell);
+        });
+
+        // Long press for mobile flagging
+        let pressTimer;
+        cell.el.addEventListener('touchstart', (e) => {
+          pressTimer = setTimeout(() => handleRightClick(cell), 400);
+        });
+        cell.el.addEventListener('touchend', () => clearTimeout(pressTimer));
+
+        grid[r][c] = cell;
+        gridEl.appendChild(cell.el);
+      }
+    }
+  }
+
+  function placeMines(firstR, firstC) {
+    let placed = 0;
+    while (placed < MINES) {
+      let r = Math.floor(Math.random() * ROWS);
+      let c = Math.floor(Math.random() * COLS);
+      if (!grid[r][c].isMine && !(r === firstR && c === firstC)) {
+        grid[r][c].isMine = true;
+        placed++;
+      }
+    }
+
+    // Calculate neighboring mine count
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (!grid[r][c].isMine) {
+          let count = 0;
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              let nr = r + dr, nc = c + dc;
+              if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && grid[nr][nc].isMine) {
+                count++;
+              }
+            }
+          }
+          grid[r][c].count = count;
+        }
+      }
+    }
+  }
+
+  function startTimer() {
+    timerInterval = setInterval(() => {
+      timer = Math.min(999, timer + 1);
+      timerEl.textContent = String(timer).padStart(3, '0');
+    }, 1000);
+  }
+
+  function handleClick(cell) {
+    if (gameOver || cell.flagged || cell.revealed) return;
+
+    if (firstClick) {
+      firstClick = false;
+      placeMines(cell.r, cell.c);
+      startTimer();
+    }
+
+    if (cell.isMine) {
+      // Game Over
+      gameOver = true;
+      clearInterval(timerInterval);
+      faceEl.textContent = '😵';
+      revealAllMines();
+      return;
+    }
+
+    reveal(cell);
+
+    if (revealedCount === ROWS * COLS - MINES) {
+      // Win
+      gameOver = true;
+      clearInterval(timerInterval);
+      faceEl.textContent = '😎';
+    }
+  }
+
+  function reveal(cell) {
+    if (cell.revealed || cell.flagged) return;
+    cell.revealed = true;
+    revealedCount++;
+    cell.el.classList.add('revealed');
+
+    if (cell.count > 0) {
+      cell.el.textContent = cell.count;
+      cell.el.classList.add('c' + cell.count);
+    } else {
+      // Cascade reveal 0s
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          let nr = cell.r + dr, nc = cell.c + dc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+            reveal(grid[nr][nc]);
+          }
+        }
+      }
+    }
+  }
+
+  function handleRightClick(cell) {
+    if (gameOver || cell.revealed) return;
+    cell.flagged = !cell.flagged;
+    cell.el.textContent = cell.flagged ? '🚩' : '';
+    flags += cell.flagged ? 1 : -1;
+    mineCountEl.textContent = String(Math.max(0, MINES - flags)).padStart(3, '0');
+  }
+
+  function revealAllMines() {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c].isMine) {
+          grid[r][c].el.classList.add('mine');
+          grid[r][c].el.textContent = '💣';
+        }
+      }
+    }
+  }
+
+  faceEl.onclick = init;
+  init();
+</script>
+</body>
+</html>
